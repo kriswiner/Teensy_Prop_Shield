@@ -1,4 +1,4 @@
-/* Teensy Prop Shield Example Code
+ /* Teensy Prop Shield Example Code
  Original sketch by: Kris Winer
  with pieces borrowed from Jim Linblom of sparkfun.com
  date: May 31, 2014
@@ -349,8 +349,8 @@ float GyroMeasDrift = PI * (0.0f  / 180.0f);   // gyroscope measurement drift in
 // I haven't noticed any reduction in solution accuracy. This is essentially the I coefficient in a PID control sense; 
 // the bigger the feedback coefficient, the faster the solution converges, usually at the expense of accuracy. 
 // In any case, this is the free parameter in the Madgwick filtering and fusion scheme.
-float beta = sqrt(3.0f / 4.0f) * GyroMeasError;   // compute beta
-float zeta = sqrt(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
+float beta = sqrtf(3.0f / 4.0f) * GyroMeasError;   // compute beta
+float zeta = sqrtf(3.0f / 4.0f) * GyroMeasDrift;   // compute zeta, the other free parameter in the Madgwick scheme usually set to a small or zero value
 #define Kp 2.0f * 5.0f // these are the free parameters in the Mahony filter and fusion scheme, Kp for proportional feedback, Ki for integral
 #define Ki 0.0f
 
@@ -560,9 +560,9 @@ void loop()
   // Tait-Bryan angles as well as Euler angles are non-commutative; that is, the get the correct orientation the rotations must be
   // applied in the correct order which for this configuration is yaw, pitch, and then roll.
   // For more see http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles which has additional links.
-    yaw   = atan2(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
-    pitch = -asin(2.0f * (q[1] * q[3] - q[0] * q[2]));
-    roll  = atan2(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
+    yaw   = atan2f(2.0f * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3]);   
+    pitch = -asinf(2.0f * (q[1] * q[3] - q[0] * q[2]));
+    roll  = atan2f(2.0f * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3]);
     pitch *= 180.0f / PI;
     yaw   *= 180.0f / PI; 
     yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
@@ -1241,6 +1241,7 @@ void FXAS21000Active()
  writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG1, c |   0x02);   // Set bit 1 to 1, active mode; data acquisition enabled
 }
 
+
 void MPL3115A2readAltitude() // Get altitude in meters and temperature in centigrade
 {
   uint8_t rawData[5];  // msb/csb/lsb pressure and msb/lsb temperature stored in five contiguous registers 
@@ -1258,34 +1259,32 @@ void MPL3115A2readAltitude() // Get altitude in meters and temperature in centig
   
   readBytes(MPL3115A2_ADDRESS, MPL3115A2_OUT_P_MSB, 5, &rawData[0]);  // Read the five raw data registers into data array
 
-// Altutude bytes-whole altitude contained defined by msb, csb, and first two bits of lsb, fraction by next two bits of lsb
+// Altitude bytes-whole altitude contained defined by msb, csb, and first two bits of lsb, fraction by next two bits of lsb
   uint8_t msbA = rawData[0];
   uint8_t csbA = rawData[1];
   uint8_t lsbA = rawData[2];
 // Temperature bytes
   uint8_t msbT = rawData[3];
   uint8_t lsbT = rawData[4];
- 
- // Calculate altitude, check for negative sign in altimeter data
- long foo = 0;
- if(msbA > 0x7F) {
-   foo = ~((long)msbA << 16 | (long)csbA << 8 | (long)lsbA) + 1; // 2's complement the data
-   altitude = (float) (foo >> 8) + (float) ((lsbA >> 4)/16.0); // Whole number plus fraction altitude in meters for negative altitude
-   altitude *= -1.;
- }
- else {
-   altitude = (float) ( (msbA << 8) | csbA) + (float) ((lsbA >> 4)/16.0);  // Whole number plus fraction altitude in meters
- }
 
-// Calculate temperature, check for negative sign
-if(msbT > 0x7F) {
- foo = ~(msbT << 8 | lsbT) + 1 ; // 2's complement
- temperature = (float) (foo >> 8) + (float)((lsbT >> 4)/16.0); // add whole and fractional degrees Centigrade
- temperature *= -1.;
- }
- else {
-   temperature = (float) (msbT) + (float)((lsbT >> 4)/16.0); // add whole and fractional degrees Centigrade
- }
+ // Calculate altitude 
+  int16_t altitude_whole = ((int16_t)msbA << 8 | (int16_t)csbA ) ; // Construct signed 16-bit whole number altitude
+ 
+  lsbA &= 0xF0; // Keep only bits 5 - 7, the fractional altitude
+  lsbA >>= 4; // Shift to get the fractional altitude
+  float altitude_frac = (float) lsbA/16.0; // Convert to fractional altitude in meters
+
+  altitude = (float) (altitude_whole) + altitude_frac; // Combine whole and fractional parts to get entire pressure in Pascal
+
+ // Calculate temperature 
+  int16_t temperature_whole = ((int16_t)msbT << 8 | lsbT ) ; // Construct signed 16-bit whole number temperature
+  temperature_whole >>= 8;
+ 
+  lsbT &= 0xF0; // Keep only bits 5 - 7, the fractional temperature
+  lsbT >>= 4; // Shift to get the fractional temperature
+  float temperature_frac = (float) lsbT/16.0; // Convert to fractional temperature in Centigrade
+
+  temperature = (float) (temperature_whole) + temperature_frac; // Combine whole and fractional parts to get entire temperature in Centigrade
 }
 
 void MPL3115A2readPressure()
@@ -1313,7 +1312,8 @@ void MPL3115A2readPressure()
   uint8_t msbT = rawData[3];
   uint8_t lsbT = rawData[4]; 
  
-  long pressure_whole =   ((long)msbP << 16 |  (long)csbP << 8 |  (long)lsbP) ; // Construct whole number pressure
+// Calculate pressure 
+   int32_t pressure_whole =   ((int32_t)msbP << 16 |  (int32_t)csbP << 8 |  (int32_t)lsbP) ; // Construct whole number pressure
   pressure_whole >>= 6; // Only two most significant bits of lsbP contribute to whole pressure; its an 18-bit number
  
   lsbP &= 0x30; // Keep only bits 5 and 6, the fractional pressure
@@ -1322,16 +1322,15 @@ void MPL3115A2readPressure()
 
   pressure = (float) (pressure_whole) + pressure_frac; // Combine whole and fractional parts to get entire pressure in Pascal
 
-// Calculate temperature, check for negative sign
-long foo = 0;
-if(msbT > 0x7F) { // Is the most significant bit a 1? Then its a negative number in two's complement form
- foo = ~(msbT << 8 | lsbT) + 1 ; // 2's complement
- temperature = (float) (foo >> 8) + (float)((lsbT >> 4)/16.0); // add whole and fractional degrees Centigrade
- temperature *= -1.;
- }
- else {
-   temperature = (float) (msbT) + (float)((lsbT >> 4)/16.0); // add whole and fractional degrees Centigrade
- }
+ // Calculate temperature 
+  int16_t temperature_whole = ((int16_t)msbT << 8 | lsbT ) ; // Construct signed 16-bit whole number temperature
+  temperature_whole >>= 8;
+
+  lsbT &= 0xF0; // Keep only bits 5 - 7, the fractional temperature
+  lsbT >>= 4; // Shift to get the fractional temperature
+  float temperature_frac = (float) lsbT/16.0; // Convert to fractional temperature in Centigrade
+
+  temperature = (float) (temperature_whole) + temperature_frac; // Combine whole and fractional parts to get entire temperature in Centigrade
 }
 
 /*
