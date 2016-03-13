@@ -1,4 +1,4 @@
- /* Teensy Prop Shield Example Code
+/* Teensy Prop Shield Example Code
  Original sketch by: Kris Winer
  with pieces borrowed from Jim Linblom of sparkfun.com
  date: May 31, 2014
@@ -7,7 +7,6 @@
  
  Includes reset, initialization, accelerometer calibration, sleep mode, motion threshold, portrait/lanscape detection
  and tap detection function. Tried to get the acceleration magnitude detection to work but it seems to be always on!
- Added LCD functions to allow data display and motion detection to on-breadboard monitor.
  
  This code provides example usage for most features of
  the FXOS8700CQ 3-axis, I2C 14-bit accelerometer/16-bit magnetometer. 
@@ -389,9 +388,9 @@ void setup()
   if (c == 0xC7 && d == 0xD7 && e == 0xC4) // WHO_AM_I should always be 0xC7, 0xD1, and 0xC4
   {  
      // Define sensor sensitivities
-     getAres();                   // get accelerometer sensitivity
-     mRes = 10./32768.;           // get magnetometer sensitivity
-     getGres();                   // get gyro sensitivity
+     getAres();                   // get accelerometer sensitivity (g/LSB)
+     mRes = 1.;                   // get magnetometer sensitivity (0.1 microTesla/LSB or 1 milliGauss/LSB)
+     getGres();                   // get gyro sensitivity (dps/LSB)
  
     FXOS8700CQReset();           // Start by resetting sensor device to default settings
     calibrateFXOS8700CQ();       // Calibrate the accelerometer
@@ -470,7 +469,7 @@ void loop()
   if(readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_DR_STATUS) & 0x08)  // When this bit set, all mag axes have new data
   {
     readMagData(magCount);      // Read the x/y/z adc values
-    mx = (float)magCount[0]*mRes;  // get actual Gauss value 
+    mx = (float)magCount[0]*mRes;  // get actual milliGauss value 
     my = (float)magCount[1]*mRes;   
     mz = (float)magCount[2]*mRes;  
   }
@@ -516,9 +515,9 @@ void loop()
 
 
     // Print out magnetometer data in mG
-    Serial.print("x-magnetic field = "); Serial.print(1000.*mx); Serial.println(" mG");   
-    Serial.print("y-magnetic field = "); Serial.print(1000.*my); Serial.println(" mG");   
-    Serial.print("z-magnetic field = "); Serial.print(1000.*mz); Serial.println(" mG");  
+    Serial.print("x-magnetic field = "); Serial.print(mx); Serial.println(" mG");   
+    Serial.print("y-magnetic field = "); Serial.print(my); Serial.println(" mG");   
+    Serial.print("z-magnetic field = "); Serial.print(mz); Serial.println(" mG");  
 
     Serial.print("x-rate = "); Serial.print(gx); Serial.println(" deg/s");   
     Serial.print("y-rate = "); Serial.print(gy); Serial.println(" deg/s");   
@@ -682,7 +681,7 @@ void readAccelData(int16_t * destination)
 {
   uint8_t rawData[6];  // x/y/z accel register data stored here
   readBytes(FXOS8700CQ_ADDRESS, FXOS8700CQ_OUT_X_MSB, 6, &rawData[0]);  // Read the six raw data registers into data array
-  destination[0] = (int16_t) (((rawData[0] << 8) | rawData[1])) >> 2;
+  destination[0] = (int16_t) (((rawData[0] << 8) | rawData[1])) >> 2; // 14-bit signed integer
   destination[1] = (int16_t) (((rawData[2] << 8) | rawData[3])) >> 2;
   destination[2] = (int16_t) (((rawData[4] << 8) | rawData[5])) >> 2;
 }
@@ -691,7 +690,7 @@ void readMagData(int16_t * destination)
 {
   uint8_t rawData[6];  // x/y/z accel register data stored here
   readBytes(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OUT_X_MSB, 6, &rawData[0]);  // Read the six raw data registers into data array
-  destination[0] = (int16_t) (((rawData[0] << 8) | rawData[1]));
+  destination[0] = (int16_t) (((rawData[0] << 8) | rawData[1])); // 16-bit signed integer
   destination[1] = (int16_t) (((rawData[2] << 8) | rawData[3]));
   destination[2] = (int16_t) (((rawData[4] << 8) | rawData[5]));
 }
@@ -830,7 +829,7 @@ void calibrateFXOS8700CQ()
   uint16_t ii, fcount;
   int16_t temp[3];
 
-  Serial.println("hold sensor flat and motionless for accel and gyro calibration!");
+  Serial.println("Hold sensor flat and motionless for accel and gyro calibration!");
   
   // Clear all interrupts by reading the data output and F_STATUS registers
   readAccelData(temp);
@@ -885,7 +884,7 @@ void calibrateFXOS8700CQ()
 void FXOS8700CQMagOffset() 
 {
   uint16_t ii = 0, sample_count = 0;
-  int32_t mag_bias[3] = {0, 0, 0}, mag_scale[3] = {0, 0, 0};
+  int16_t mag_bias[3] = {0, 0, 0}, mag_scale[3] = {0, 0, 0};
   int16_t mag_max[3] = {0x8000, 0x8000, 0x8000}, mag_min[3] = {0x7FFF, 0x7FFF, 0x7FFF}, mag_temp[3] = {0, 0, 0};
   float dest1[3] = {0, 0, 0}, dest2[3] = {0, 0, 0};
 
@@ -898,11 +897,12 @@ void FXOS8700CQMagOffset()
   readMagData(mag_temp);
   readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_STATUS);
   // Configure the magnetometer
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, 0x80 | magOSR << 2 | 0x03); // Set auto-calibration, set oversampling, enable hybrid mode 
+//  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, 0x80 | magOSR << 2 | 0x03); // Enable auto-calibration, set oversampling, enable hybrid mode 
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, magOSR << 2 | 0x03); // Disable auto-calibration, set oversampling, enable hybrid mode 
  
   FXOS8700CQActive();  // Set to active to start collecting data
    
-   sample_count = 256;
+   sample_count = 512;
    for(ii = 0; ii < sample_count; ii++) {
     readMagData(mag_temp);  // Read the mag data   
     for (int jj = 0; jj < 3; jj++) {
@@ -937,13 +937,12 @@ void FXOS8700CQMagOffset()
     dest2[1] = avg_rad/((float)mag_scale[1]);
     dest2[2] = avg_rad/((float)mag_scale[2]);
     
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_X_MSB, 0x00); 
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_X_LSB, 0x00); 
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Y_MSB, 0x00); 
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Y_LSB, 0x00); 
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Z_MSB, 0x00); 
-  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Z_LSB, 0x00); 
-
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_X_MSB, ((mag_bias[0] << 1) & 0xFF00) >> 8); 
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_X_LSB, ((mag_bias[0] << 1) & 0x00FF)); 
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Y_MSB, ((mag_bias[1] << 1) & 0xFF00) >> 8); 
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Y_LSB, ((mag_bias[1] << 1) & 0x00FF)); 
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Z_MSB, ((mag_bias[2] << 1) & 0xFF00) >> 8); 
+  writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_OFF_Z_LSB, ((mag_bias[2] << 1) & 0x00FF)); 
   Serial.println("Mag Calibration done!");
 
   FXOS8700CQActive();  // Set to active to start reading
@@ -1006,7 +1005,8 @@ void initFXOS8700CQ()
     writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG2, readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG2) |  (0x02)); // select normal(00) or high resolution (10) mode
     
     // Configure the magnetometer
-    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, 0x80 | magOSR << 2 | 0x03); // Set auto-calibration, set oversampling, enable hybrid mode 
+    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, 0x80 | magOSR << 2 | 0x03); // Enable auto-calibration, set oversampling, enable hybrid mode 
+//    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, magOSR << 2 | 0x03); // Disable auto-calibration, set oversampling, enable hybrid mode 
     
     // Configure interrupts 1 and 2
     writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG3, readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG3) & ~(0x02)); // clear bits 0, 1 
