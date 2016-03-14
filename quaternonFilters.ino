@@ -1,5 +1,3 @@
-#include "Arduino.h"
-
 // Implementation of Sebastian Madgwick's "...efficient orientation filter for... inertial/magnetic sensor arrays"
 // (see http://www.x-io.co.uk/category/open-source/ for examples and more details)
 // which fuses acceleration, rotation rate, and magnetic moments to produce a quaternion-based estimate of absolute
@@ -61,7 +59,7 @@
             _2q2mx = 2.0f * q2 * mx;
             hx = mx * q1q1 - _2q1my * q4 + _2q1mz * q3 + mx * q2q2 + _2q2 * my * q3 + _2q2 * mz * q4 - mx * q3q3 - mx * q4q4;
             hy = _2q1mx * q4 + my * q1q1 - _2q1mz * q2 + _2q2mx * q3 - my * q2q2 + my * q3q3 + _2q3 * mz * q4 - my * q4q4;
-            _2bx = sqrt(hx * hx + hy * hy);
+            _2bx = sqrtf(hx * hx + hy * hy);
             _2bz = -_2q1mx * q3 + _2q1my * q2 + mz * q1q1 + _2q2mx * q4 - mz * q2q2 + _2q3 * my * q4 - mz * q3q3 + mz * q4q4;
             _4bx = 2.0f * _2bx;
             _4bz = 2.0f * _2bz;
@@ -102,7 +100,7 @@
   
  // Similar to Madgwick scheme but uses proportional and integral filtering on the error between estimated reference vectors and
  // measured ones. 
-        void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
+            void MahonyQuaternionUpdate(float ax, float ay, float az, float gx, float gy, float gz, float mx, float my, float mz)
         {
             float q1 = q[0], q2 = q[1], q3 = q[2], q4 = q[3];   // short name local variable for readability
             float norm;
@@ -124,17 +122,17 @@
             float q4q4 = q4 * q4;   
 
             // Normalise accelerometer measurement
-            norm = sqrtf(ax * ax + ay * ay + az * az);
-            if (norm == 0.0f) return; // handle NaN
-            norm = 1.0f / norm;        // use reciprocal for division
+            norm = InvSqrt(ax * ax + ay * ay + az * az);
+            if (norm > 10000000.0f) return; // handle NaN
+  //          norm = 1.0f / norm;        // use reciprocal for division
             ax *= norm;
             ay *= norm;
             az *= norm;
 
             // Normalise magnetometer measurement
-            norm = sqrtf(mx * mx + my * my + mz * mz);
-            if (norm == 0.0f) return; // handle NaN
-            norm = 1.0f / norm;        // use reciprocal for division
+            norm = InvSqrt(mx * mx + my * my + mz * mz);
+            if (norm > 10000000.0f) return; // handle NaN
+  //          norm = 1.0f / norm;        // use reciprocal for division
             mx *= norm;
             my *= norm;
             mz *= norm;
@@ -185,11 +183,21 @@
             q4 = pc + (q1 * gz + pa * gy - pb * gx) * (0.5f * deltat);
 
             // Normalise quaternion
-            norm = sqrtf(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);
-            norm = 1.0f / norm;
+            norm = InvSqrt(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);
+  //          norm = 1.0f / norm;
             q[0] = q1 * norm;
             q[1] = q2 * norm;
             q[2] = q3 * norm;
             q[3] = q4 * norm;
  
         }
+
+        float InvSqrt(float x)
+       {
+        float xhalf = 0.5f*x;
+        int i = *(int*)&x;       // get bits for floating value
+        i = 0x5f3759df - (i>>1); // gives initial guess y0
+        x = *(float*)&i;         // convert bits back to float
+        x = x*(1.5f-xhalf*x*x);  // Newton step, repeating increases accuracy
+        return x;
+       }
