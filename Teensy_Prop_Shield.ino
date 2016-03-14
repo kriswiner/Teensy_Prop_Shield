@@ -1,3 +1,4 @@
+
 /* Teensy Prop Shield Example Code
  Original sketch by: Kris Winer
  with pieces borrowed from Jim Linblom of sparkfun.com
@@ -30,7 +31,8 @@
 #include "i2c_t3.h"  
 #include <SPI.h>
 
-// Define registers per FXOS8700CQ, Document Number: FXOS8700CQ
+// Define registers per FXOS8700CQ, Document Number: FXOS8700CQ 
+// http://cache.freescale.com/files/sensors/doc/data_sheet/FXOS8700CQ.pdf
 // Data Sheet: Technical Data Rev. 2.0, 02/2013 3-Axis, 12-bit/8-bit Digital Accelerometer
 // Freescale Semiconductor Data Sheet
 #define FXOS8700CQ_STATUS           0x00
@@ -153,6 +155,7 @@
 
 // Define registers per Freescale Semiconductor, Inc.
 // FXAS21000 Data Sheet: Advance Information Rev 1.1, 10/2013 3-Axis, 14-bit Digital MEMS Gyroscope
+// http://cache.freescale.com/files/sensors/doc/data_sheet/FXAS21000.pdf
 // Freescale Semiconductor Data Sheet
 #define FXAS21000_STATUS           0x00
 #define FXAS21000_OUT_X_MSB        0x01    
@@ -165,7 +168,7 @@
 #define FXAS21000_F_STATUS         0x08
 #define FXAS21000_F_EVENT          0x0A
 #define FXAS21000_INT_SRC_FLAG     0x0B
-#define FXAS21000_WHO_AM_I         0x0C   // Should return 0xD1
+#define FXAS21000_WHO_AM_I         0x0C   // Should return 0xD7
 #define FXAS21000_CTRL_REG0        0x0D
 #define FXAS21000_RT_CFG           0x0E   
 #define FXAS21000_RT_SRC           0x0F
@@ -394,21 +397,24 @@ void setup()
  
     FXOS8700CQReset();           // Start by resetting sensor device to default settings
     calibrateFXOS8700CQ();       // Calibrate the accelerometer
-    FXOS8700CQMagOffset();       // Apply user-determined magnetometer offsets-currently use to calculate the offsets dynamically
+
+    FXAS21000Reset();            // Start by resetting sensor device to default settings
+    calibrateFXAS21000(gBias);   // Calculate gyro offset bias
+ 
+    FXOS8700CQMagOffset();       // Determine magnetometer offsets-currently calculate the offsets dynamically
+    
     initFXOS8700CQ();            // Initialize the accelerometer and magnetometer if communication is OK
     accelMotionIntFXOS8700CQ();  // Configure motion interrupts
     sleepModeFXOS8700CQ();       // Configure sleep mode
     Serial.println("FXOS8700CQQ is online...");
     delay (1000);
 
-    FXAS21000Reset(); // Start by resetting sensor device to default settings
-    calibrateFXAS21000(gBias);
     initFXAS21000();  // init the accelerometer if communication is OK
     Serial.println("FXAS21000Q is online...");
     delay (1000);
 
     MPL3115A2Reset();                // Start off by resetting all registers to the default
-    initRealTimeMPL3115A2();         // initialize the accelerometer for realtime data acquisition if communication is OK
+    initRealTimeMPL3115A2();         // initialize the altimeter for realtime data acquisition if communication is OK
     MPL3115A2SampleRate(SAMPLERATE); // Set oversampling ratio
     MPL3115A2enableEventflags();     // Set data ready enable
     Serial.println("MPL3115A2 event flags enabled...");
@@ -461,14 +467,11 @@ void loop()
     ax = (float)accelCount[0]*aRes;  // get actual g value, this depends on scale being set
     ay = (float)accelCount[1]*aRes;  // also subtract averaged accelerometer biases
     az = (float)accelCount[2]*aRes;  
-    
-    acceltempCount = readAccelTempData();  // Read the x/y/z adc values
-    acceltemperature = (float) acceltempCount * 0.96 + 4.; // Temperature in degrees Centigrade
   }
   
   if(readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_DR_STATUS) & 0x08)  // When this bit set, all mag axes have new data
   {
-    readMagData(magCount);      // Read the x/y/z adc values
+    readMagData(magCount);         // Read the x/y/z adc values
     mx = (float)magCount[0]*mRes;  // get actual milliGauss value 
     my = (float)magCount[1]*mRes;   
     mz = (float)magCount[2]*mRes;  
@@ -483,9 +486,6 @@ void loop()
     gz = (float)gyroCount[2]*gRes - gBias[2];  
   } 
           
-    gyrotempCount = readGyroTempData();  // Read the x/y/z adc values
-    gyrotemperature = (float) gyrotempCount; // Temperature in degrees Centigrade
-
     Now = micros();
     deltat = ((Now - lastUpdate)/1000000.0f); // set integration time by time elapsed since last filter update
     lastUpdate = Now;
@@ -493,14 +493,12 @@ void loop()
     sum += deltat; // sum for averaging filter update rate
     sumCount++;
   
-    // Sensors x (y)-axis of the accelerometer is aligned with the y (x)-axis of the magnetometer;
-    // the magnetometer z-axis (+ down) is opposite to z-axis (+ up) of accelerometer and gyro!
-    // We have to make some allowance for this orientationmismatch in feeding the output to the quaternion filter.
-    // For the MPU-9250, we have chosen a magnetic rotation that keeps the sensor forward along the x-axis just like
-    // in the LSM9DS0 sensor. This rotation can be modified to allow any convenient orientation convention.
-    // This is ok by aircraft orientation standards!  
+    // Sensors x (y)-axis of the accelerometer/magnetometer is aligned with the x (y)-axis of the gyro on the prop shield;
+    // All three sensors have the positive z-axis up.
+    // The long axis of the prop shield is in thex-axis direction, which we will designate as North
+    // Then x is North, -y is East, and -z is Down for a NED convention
     // Pass gyro rate as rad/s
-    MadgwickQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f,  my,  mx, mz);
+    MadgwickQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  mx,  -my, -mz);
 //  MahonyQuaternionUpdate(ax, ay, az, gx*PI/180.0f, gy*PI/180.0f, gz*PI/180.0f, my, mx, mz);
 
 
@@ -511,6 +509,8 @@ void loop()
     Serial.print("x-acceleration = "); Serial.print(1000.*ax); Serial.println(" mg");   
     Serial.print("y-acceleration = "); Serial.print(1000.*ay); Serial.println(" mg");   
     Serial.print("z-acceleration = "); Serial.print(1000.*az); Serial.println(" mg");
+    acceltempCount = readAccelTempData();  // Read the x/y/z adc values
+    acceltemperature = (float) acceltempCount * 0.96 + 4.; // Temperature in degrees Centigrade
     Serial.print("Accel Temperature is "); Serial.print(acceltemperature, 1); Serial.println(" C");
 
 
@@ -522,6 +522,8 @@ void loop()
     Serial.print("x-rate = "); Serial.print(gx); Serial.println(" deg/s");   
     Serial.print("y-rate = "); Serial.print(gy); Serial.println(" deg/s");   
     Serial.print("z-rate = "); Serial.print(gz); Serial.println(" deg/s");  
+    gyrotempCount = readGyroTempData();  // Read the x/y/z adc values
+    gyrotemperature = (float) gyrotempCount; // Temperature in degrees Centigrade
     Serial.print("Gyro Temperature is "); Serial.print(gyrotemperature, 1); Serial.println(" C");
 
     MPL3115A2ActiveAltimeterMode(); 
@@ -565,6 +567,7 @@ void loop()
     pitch *= 180.0f / PI;
     yaw   *= 180.0f / PI; 
     yaw   -= 13.8f; // Declination at Danville, California is 13 degrees 48 minutes and 47 seconds on 2014-04-04
+    if(yaw < 0) yaw   += 360.0f; // Ensure yaw stays between 0 and 360
     roll  *= 180.0f / PI;
      
     Serial.print("Yaw, Pitch, Roll: ");
@@ -829,7 +832,7 @@ void calibrateFXOS8700CQ()
   uint16_t ii, fcount;
   int16_t temp[3];
 
-  Serial.println("Hold sensor flat and motionless for accel and gyro calibration!");
+  Serial.println("Hold sensor flat and motionless for accel calibration!");
   
   // Clear all interrupts by reading the data output and F_STATUS registers
   readAccelData(temp);
@@ -838,7 +841,7 @@ void calibrateFXOS8700CQ()
   FXOS8700CQStandby();  // Must be in standby to change registers
 
   writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG1, 0x03 << 3); // select 100 Hz ODR
-  fcount = 200;                                        // sample for 2 second
+  fcount = 400;                                        // sample for 4 seconds
   writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_XYZ_DATA_CFG, 0x00);   // select 2 g full scale
   uint16_t accelsensitivity = 4096;                    // 4096 LSB/g
 
@@ -877,6 +880,9 @@ void calibrateFXOS8700CQ()
   writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_A_OFF_Z, rawData[2]); // z-axis compensation 
 
   FXOS8700CQActive();  // Set to active to start reading
+
+    Serial.println("Accel calibration done!");
+
 }
   
   
@@ -1134,6 +1140,8 @@ void calibrateFXAS21000(float * gBias)
   int32_t gyro_bias[3] = {0, 0, 0};
   uint16_t ii, fcount;
   int16_t temp[3];
+
+    Serial.println("Hold sensor flat and motionless for gyro calibration!");
   
   // Clear all interrupts by reading the data output and STATUS registers
   readGyroData(temp);
@@ -1142,7 +1150,7 @@ void calibrateFXAS21000(float * gBias)
   FXAS21000Standby();  // Must be in standby to change registers
 
   writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG1, 0x08);   // select 50 Hz ODR
-  fcount = 100;                                     // sample for 2 second
+  fcount = 400;                                     // sample for 4 second
   writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG0, 0x03);   // select 200 deg/s full scale
   uint16_t gyrosensitivity = 41;                   // 40.96 LSB/deg/s
 
@@ -1170,6 +1178,8 @@ void calibrateFXAS21000(float * gBias)
   gBias[0] = (float)gyro_bias[0]/(float) gyrosensitivity; // get average values
   gBias[1] = (float)gyro_bias[1]/(float) gyrosensitivity; // get average values
   gBias[2] = (float)gyro_bias[2]/(float) gyrosensitivity; // get average values
+
+  Serial.println("Gyro calibration done!");
 
   FXAS21000Ready();  // Set to ready
 }
