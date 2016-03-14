@@ -1011,8 +1011,8 @@ void initFXOS8700CQ()
     writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG2, readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG2) |  (0x02)); // select normal(00) or high resolution (10) mode
     
     // Configure the magnetometer
-    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, 0x80 | magOSR << 2 | 0x03); // Enable auto-calibration, set oversampling, enable hybrid mode 
-//    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, magOSR << 2 | 0x03); // Disable auto-calibration, set oversampling, enable hybrid mode 
+//    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, 0x80 | magOSR << 2 | 0x03); // Enable auto-calibration, set oversampling, enable hybrid mode 
+    writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_M_CTRL_REG1, magOSR << 2 | 0x03); // Disable auto-calibration, set oversampling, enable hybrid mode 
     
     // Configure interrupts 1 and 2
     writeByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG3, readByte(FXOS8700CQ_ADDRESS, FXOS8700CQ_CTRL_REG3) & ~(0x02)); // clear bits 0, 1 
