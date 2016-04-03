@@ -166,6 +166,7 @@
 #define FXAS21000_OUT_Z_LSB        0x06
 #define FXAS21000_DR_STATUS        0x07
 #define FXAS21000_F_STATUS         0x08
+#define FXAS21000_F_SETUP          0x09
 #define FXAS21000_F_EVENT          0x0A
 #define FXAS21000_INT_SRC_FLAG     0x0B
 #define FXAS21000_WHO_AM_I         0x0C   // Should return 0xD7
@@ -177,6 +178,8 @@
 #define FXAS21000_TEMP             0x12
 #define FXAS21000_CTRL_REG1        0x13
 #define FXAS21000_CTRL_REG2        0x14
+#define FXAS21000_CTRL_REG3        0x15
+
 
 // Freescale Semiconductor MPL3115A2 Precision I2C altimeter 
 // http://www.nxp.com/files/sensors/doc/data_sheet/MPL3115A2.pdf
@@ -293,25 +296,25 @@ enum ST_VALUE {
 
 // Set initial input parameters
 enum gyroFSR {
-  GFS_1600DPS = 0,
-  GFS_800DPS,
-  GFS_400DPS,
-  GFS_200DPS
+  GFS_2000DPS = 0,
+  GFS_1000DPS,
+  GFS_500DPS,
+  GFS_250DPS
 };
 
 enum gyroODR {
-  GODR_200HZ = 0, // 200 Hz
+  GODR_800HZ = 0, // 800 Hz
+  GODR_400HZ,
+  GODR_200HZ,
   GODR_100HZ,
   GODR_50HZ,
-  GODR_25HZ,
+  GODR_25HZ, // 25 Hz, etc.
   GODR_12_5HZ,
-  GODR_6_25HZ, // 6.25 Hz, etc.
-  GODR_3_125HZ,
-  GODR_1_5625HZ
+  GODR_12_55HZ
 };
 
 // Specify FXAS21000 gyro settings
-uint8_t gyroFSR = GFS_200DPS;
+uint8_t gyroFSR = GFS_250DPS;
 uint8_t gyroODR = GODR_200HZ;
 float gRes, gBias[3] = {0, 0, 0}; // scale resolutions per LSB for the sensors
 
@@ -495,7 +498,7 @@ void loop()
   
     // Sensors x (y)-axis of the accelerometer/magnetometer is aligned with the x (y)-axis of the gyro on the prop shield;
     // All three sensors have the positive z-axis up.
-    // The long axis of the prop shield is in thex-axis direction, which we will designate as North
+    // The long axis of the prop shield is in the x-axis direction, which we will designate as North
     // Then x is North, -y is East, and -z is Down for a NED convention
     // Pass gyro rate as rad/s
     MadgwickQuaternionUpdate(-ax, ay, az, gx*PI/180.0f, -gy*PI/180.0f, -gz*PI/180.0f,  mx,  -my, -mz);
@@ -1105,18 +1108,18 @@ void getGres() {
   switch (gyroFSR)
   {
    // Possible gyro scales (and their register bit settings) are:
-  // 200 DPS (11), 400 DPS (10), 800 DPS (01), and 1600 DPS  (00). 
-    case GFS_1600DPS:
-          gRes = 1600.0/8192.0;
+  // 250 DPS (11), 500 DPS (10), 1000 DPS (01), and 2000 DPS  (00). 
+    case GFS_2000DPS:
+          gRes = 2000.0/32768.0;
           break;
-    case GFS_800DPS:
-          gRes = 800.0/8192.0;
+    case GFS_1000DPS:
+          gRes = 1000.0/32768.0;
           break;
-    case GFS_400DPS:
-          gRes = 400.0/8192.0;
+    case GFS_500DPS:
+          gRes = 500.0/32768.0;
           break;           
-    case GFS_200DPS:
-          gRes = 200.0/8192.0;
+    case GFS_250DPS:
+          gRes = 250.0/32768.0;
   }
 }
 
@@ -1124,9 +1127,9 @@ void readGyroData(int16_t * destination)
 {
   uint8_t rawData[6];  // x/y/z accel register data stored here
   readBytes(FXAS21000_ADDRESS, FXAS21000_OUT_X_MSB, 6, &rawData[0]);  // Read the six raw data registers into data array
-  destination[0] = (int16_t) (((rawData[0] << 8) | rawData[1])) >> 2; // signer 14-bit integers
-  destination[1] = (int16_t) (((rawData[2] << 8) | rawData[3])) >> 2;
-  destination[2] = (int16_t) (((rawData[4] << 8) | rawData[5])) >> 2;
+  destination[0] = (int16_t) (((rawData[0] << 8) | rawData[1])); // signed 16-bit integers
+  destination[1] = (int16_t) (((rawData[2] << 8) | rawData[3]));
+  destination[2] = (int16_t) (((rawData[4] << 8) | rawData[5]));
 }
 
 int8_t readGyroTempData()
@@ -1149,10 +1152,10 @@ void calibrateFXAS21000(float * gBias)
   
   FXAS21000Standby();  // Must be in standby to change registers
 
-  writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG1, 0x08);   // select 50 Hz ODR
-  fcount = 400;                                     // sample for 4 second
-  writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG0, 0x03);   // select 200 deg/s full scale
-  uint16_t gyrosensitivity = 41;                   // 40.96 LSB/deg/s
+  writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG1, 0x04);   // select 50 Hz ODR
+  fcount = 400;                                     // sample for 8 second
+  writeByte(FXAS21000_ADDRESS, FXAS21000_CTRL_REG0, 0x03);   // select 250 deg/s full scale
+  uint16_t gyrosensitivity = 131;                   // 131.072 LSB/deg/s
 
   FXAS21000Active();  // Set to active to start collecting data
    
@@ -1160,9 +1163,9 @@ void calibrateFXAS21000(float * gBias)
   for(ii = 0; ii < fcount; ii++)   // construct count sums for each axis
   {
   readBytes(FXAS21000_ADDRESS, FXAS21000_OUT_X_MSB, 6, &rawData[0]);  // Read the FIFO data registers into data array
-  temp[0] = (int16_t) (((rawData[0] << 8) | rawData[1])) >> 2;
-  temp[1] = (int16_t) (((rawData[2] << 8) | rawData[3])) >> 2;
-  temp[2] = (int16_t) (((rawData[4] << 8) | rawData[5])) >> 2;
+  temp[0] = (int16_t) (((rawData[0] << 8) | rawData[1]));
+  temp[1] = (int16_t) (((rawData[2] << 8) | rawData[3]));
+  temp[2] = (int16_t) (((rawData[4] << 8) | rawData[5]));
   
   gyro_bias[0] += (int32_t) temp[0];
   gyro_bias[1] += (int32_t) temp[1];
